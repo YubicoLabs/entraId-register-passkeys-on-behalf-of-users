@@ -53,11 +53,16 @@ The second script `bulkRegistrationCreateAndActivateCredential.py` will be used 
 3. `pip install fido2`
 4. `pip install requests`
 5. `pip install yubikey-manager`
-5. Make sure ykman cli is installed, this is only required if you want the script to generate a random PIN and set the PIN on the security key.
-6. While not explicitly required, it is suggested that you have a security key that you can reset without risk of locking out of your accounts. Depending on the `useRandomPIN` value in `configs.json` the script can set a random PIN. If that PIN is lost, the security key may need to be reset. Read the below configurations to understand how different platforms, key configurations, and `configs.json` configurations may behave. 
-The scripts have mostly been tested with YubiKeys, but other security keys have also been tested. There are some dependencies on Yubikey Manager software when attempting to set PINs and determining the security key serial numbers so those features will not work if using security keys from other vendors. The script will work with other security key vendors' products if using `"useRandomPIN": false` and if the security key already has a PIN set. 
+6. Make sure [yubikey-manager](https://github.com/Yubico/yubikey-manager/releases) cli is installed, this is only required if you want the script to generate a random PIN and set the PIN on the security key.
 
-### Tested configurations:
+### Other setup considerations
+1. While not explicitly required, it is suggested that you use a security key that you can reset without risk of locking out of any accounts where you have registered the security key. 
+2. Depending on the `useRandomPIN` value in `configs.json` the script may set a random PIN. If that random PIN is then lost, the security key may need to be reset. 
+3. Read the below *Tested Configurations* section to understand how different platforms, key configurations, and `configs.json` configurations may behave.  
+4. The scripts have mostly been tested with YubiKeys, but other vendors' security keys have also been tested. Other vendors products may not fully work with all features of the script since there are some dependencies on Yubikey Manager software when attempting to set YubiKey PINs and determining YubiKey serial numbers so those features will not work if using security keys from other vendors. The script will work with other security key vendors' products if using `"useRandomPIN": false` and if the security key already has a PIN set.  
+5. Any security key that is used with this script must also be supported by Microsoft. See https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-passwordless#fido2-security-key-providers
+
+#### Tested configurations:
 | Platform | PIN configured on key | configs.json setting | Result |
 |-----------|-----------|-----------|-----------| 
 | Windows admin-mode | PIN not set| useRandomPIN=false | Not supported configuration |
