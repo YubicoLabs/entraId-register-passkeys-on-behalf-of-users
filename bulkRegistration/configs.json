@@ -1,0 +1,9 @@
+{
+    "tenantName": "{tenantName}.onmicrosoft.com",
+    "client_id": "",
+    "client_secret": "",
+    "usersInScopeGroup": "GroupName",
+    "challengeTimeoutInMinutes": 60,
+    "deleteExistingUserFIDOCredentials": false,        
+    "useRandomPIN": false
+}
