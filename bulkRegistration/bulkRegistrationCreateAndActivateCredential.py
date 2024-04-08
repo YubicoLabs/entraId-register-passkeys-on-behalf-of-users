@@ -36,6 +36,7 @@ import subprocess
 import sys
 from getpass import getpass
 import secrets
+import string
 from ykman.device import list_all_devices
 
 
@@ -141,8 +142,10 @@ def create_credentials_on_security_key(
             if client.info.options.get("rk"):
                 break
         else:
-            print("No security key with support for discoverable" +
-                  " credentials found")
+            print(
+                "No security key with support for discoverable"
+                " credentials found"
+            )
             sys.exit(1)
 
     pkcco = build_creation_options(
@@ -339,7 +342,7 @@ def generate_and_set_pin():
     print("in generate_and_set_pin\n")
     global pin
     if configs["useRandomPIN"]:
-        pin = secrets.token_urlsafe(6)
+        pin = "".join(secrets.choice(string.digits) for i in range(6))
         print(f"\tWe will now set the PIN to: {pin} \n")
         input("\tPress Enter key to continue...")
         cmd = "ykman fido access change-pin -n " + pin
@@ -465,8 +468,10 @@ def main():
                     print("-----")
 
                 line_count += 1
-    print("\nAfter verifying results, cleanup any csv files" +
-          " that are no longer needed.\n")
+    print(
+        "\nAfter verifying results, cleanup any csv files"
+        + " that are no longer needed.\n"
+    )
 
 
 main()
