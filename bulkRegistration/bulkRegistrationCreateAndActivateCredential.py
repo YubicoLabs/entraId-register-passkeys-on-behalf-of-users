@@ -38,6 +38,7 @@ from getpass import getpass
 import secrets
 import string
 from ykman.device import list_all_devices
+from ykman import scripting as s
 
 
 import requests
@@ -46,6 +47,9 @@ from fido2.client import Fido2Client, UserInteraction, WindowsClient
 from fido2.ctap2.extensions import CredProtectExtension
 from fido2.hid import CtapHidDevice
 from fido2.utils import websafe_decode, websafe_encode
+from fido2.ctap2 import Ctap2
+from fido2.ctap import CtapError
+from fido2.ctap2.pin import ClientPin
 
 # Disabling warnings that get produced when certificate stores aren't updated
 # to check certificate validity.
@@ -337,21 +341,35 @@ def create_and_activate_fido_method(
         return False, []
 
 
+def generate_pin():
+    disallowed_pins = ['123456', '123123', '654321', '123321',
+                       '112233', '121212', '520520', '123654', '159753']
+
+    while True:
+        digits = "".join(secrets.choice(string.digits) for _ in range(6))
+        # Check if PIN is not trivial and not in banned list
+        if len(set(digits)) != 1 and digits not in disallowed_pins:
+            return digits
+
+
 def generate_and_set_pin():
     print("-----")
     print("in generate_and_set_pin\n")
     global pin
-    if configs["useRandomPIN"]:
-        pin = "".join(secrets.choice(string.digits) for i in range(6))
-        print(f"\tWe will now set the PIN to: {pin} \n")
-        input("\tPress Enter key to continue...")
-        cmd = "ykman fido access change-pin -n " + pin
-        resp = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, shell=True
-        ).communicate()[0]
-
-        print(resp.decode("utf-8"))
-        print("\tPIN set\n")
+    if configs["useRandomPIN"]:                
+        #devices = list(CtapHidDevice.list_devices())
+        device = s.single()
+        with device.fido() as connection:
+            ctap = Ctap2(connection)
+            if ctap.info.options.get("clientPin"):
+                print("\tPIN already set for the device. Quitting.")
+                print("\tReset YubiKey and rerun the script if you want to use the config 'useRandomPIN'")
+                quit()
+            pin = generate_pin()
+            print(f"\tWe will now set the PIN to: {pin} \n")            
+            client_pin = ClientPin(ctap)
+            client_pin.set_pin(pin)
+            print(f"\tPIN set to {pin}")
     else:
         pin = "n/a"
         print("\tNot generating PIN. Allowing platform to prompt for PIN\n")
@@ -407,7 +425,6 @@ def warn_user_about_pin_behaviors():
                 "random PIN."
             )
             input("\n\tPress Enter key to continue...")
-
 
 def main():
     warn_user_about_pin_behaviors()
