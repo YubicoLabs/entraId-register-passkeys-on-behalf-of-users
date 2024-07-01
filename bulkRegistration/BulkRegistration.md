@@ -53,7 +53,6 @@ The second script `bulkRegistrationCreateAndActivateCredential.py` will be used 
 3. `pip install fido2`
 4. `pip install requests`
 5. `pip install yubikey-manager`
-6. Make sure [yubikey-manager](https://github.com/Yubico/yubikey-manager/releases) cli is installed, this is only required if you want the script to generate a random PIN and set the PIN on the security key.
 
 ### Other setup considerations
 1. While not explicitly required, it is suggested that you use a security key that you can reset without risk of locking out of any accounts where you have registered the security key. 
