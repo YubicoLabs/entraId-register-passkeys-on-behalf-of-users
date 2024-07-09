@@ -47,7 +47,7 @@ from fido2.client import Fido2Client, UserInteraction, WindowsClient
 from fido2.ctap2.extensions import CredProtectExtension
 from fido2.hid import CtapHidDevice
 from fido2.utils import websafe_decode, websafe_encode
-from fido2.ctap2 import Ctap2
+from fido2.ctap2 import Ctap2, Config
 from fido2.ctap import CtapError
 from fido2.ctap2.pin import ClientPin
 
@@ -87,13 +87,13 @@ def enumerate_devices():
 
 
 # Handle user interaction
-class CliInteraction(UserInteraction):
+class CliInteraction(UserInteraction):    
     def prompt_up(self):
         print("\nTouch your security key now...\n")
 
     def request_pin(self, permissions, rp_id):
         if not configs["useRandomPIN"]:
-            return getpass("Enter PIN: ")
+            return getpass("Enter PIN: ")            
         else:
             return pin
 
@@ -111,12 +111,12 @@ def base64url_to_bytearray(b64url_string):
 
 def create_credentials_on_security_key(
     user_id, challenge, user_display_name, user_name
-):
+):    
     print("-----")
     print("in create_credentials_on_security_key\n")
     print(
         "\tPrepare for FIDO2 Registration Ceremony and follow the prompts\n"
-    )
+    )    
     print("\tPress Enter when security key is ready\n")
     serial_number = get_serial_number()
 
@@ -142,7 +142,7 @@ def create_credentials_on_security_key(
                 dev,
                 "https://login.microsoft.com",
                 user_interaction=CliInteraction(),
-            )
+            )            
             if client.info.options.get("rk"):
                 break
         else:
@@ -240,8 +240,7 @@ def build_creation_options(challenge, userId, displayName, name):
             "extensions": {
                 "hmacCreateSecret": True,
                 "enforceCredentialProtectionPolicy": True,
-                "credentialProtectionPolicy":
-                CredProtectExtension.POLICY.OPTIONAL,
+                "credentialProtectionPolicy": CredProtectExtension.POLICY.OPTIONAL,
             },
         }
     }
@@ -342,8 +341,17 @@ def create_and_activate_fido_method(
 
 
 def generate_pin():
-    disallowed_pins = ['123456', '123123', '654321', '123321',
-                       '112233', '121212', '520520', '123654', '159753']
+    disallowed_pins = [
+        "123456",
+        "123123",
+        "654321",
+        "123321",
+        "112233",
+        "121212",
+        "520520",
+        "123654",
+        "159753",
+    ]
 
     while True:
         digits = "".join(secrets.choice(string.digits) for _ in range(6))
@@ -356,23 +364,55 @@ def generate_and_set_pin():
     print("-----")
     print("in generate_and_set_pin\n")
     global pin
-    if configs["useRandomPIN"]:                
-        #devices = list(CtapHidDevice.list_devices())
+    if configs["useRandomPIN"]:
+        # devices = list(CtapHidDevice.list_devices())
         device = s.single()
         with device.fido() as connection:
             ctap = Ctap2(connection)
             if ctap.info.options.get("clientPin"):
                 print("\tPIN already set for the device. Quitting.")
-                print("\tReset YubiKey and rerun the script if you want to use the config 'useRandomPIN'")
+                print(
+                    "\tReset YubiKey and rerun the script if you want to use the config 'useRandomPIN'"
+                )
                 quit()
             pin = generate_pin()
-            print(f"\tWe will now set the PIN to: {pin} \n")            
+            print(f"\tWe will now set the PIN to: {pin} \n")
             client_pin = ClientPin(ctap)
             client_pin.set_pin(pin)
             print(f"\tPIN set to {pin}")
     else:
-        pin = "n/a"
         print("\tNot generating PIN. Allowing platform to prompt for PIN\n")
+
+
+def set_ctap21_flags():
+    global pin    
+    #No need to try if using the Windows client (as non-admin)
+    if not (
+        WindowsClient.is_available()
+        and not ctypes.windll.shell32.IsUserAnAdmin()
+    ):
+        device = s.single()
+        if not configs['useRandomPIN']:
+            #Need to prompt for PIN again if using user supplied PIN
+            print("PIN required to set minimum length and force pin change flags")
+            pin = getpass("Please enter the PIN:")
+
+        with device.fido() as connection:
+            ctap = Ctap2(connection)
+            if ctap.info.options.get("setMinPINLength"):
+                client_pin = ClientPin(ctap)
+                token = client_pin.get_pin_token(
+                    pin, ClientPin.PERMISSION.AUTHENTICATOR_CFG
+                )
+                config = Config(ctap, client_pin.protocol, token)
+                print("\tGoing to set the minimum pin length to 6.")
+                config.set_min_pin_length(min_pin_length=6)
+                print("\tGoing to force a PIN change on first use.")
+                config.set_min_pin_length(force_change_pin=True)
+    else:
+        print(
+            "Using these CTAP21 features are not supported when running in this mode"
+        )
 
 
 def get_serial_number():
@@ -426,6 +466,7 @@ def warn_user_about_pin_behaviors():
             )
             input("\n\tPress Enter key to continue...")
 
+
 def main():
     warn_user_about_pin_behaviors()
     access_token = get_access_token_for_microsoft_graph()
@@ -474,6 +515,9 @@ def main():
                         access_token,
                     )
 
+                    # Set min pin length and force pin change flags
+                    if configs["useCTAP21Features"]:
+                        set_ctap21_flags()
                     print(
                         "\n\tCompleted registration and configuration "
                         + f"for user: {user_name}"

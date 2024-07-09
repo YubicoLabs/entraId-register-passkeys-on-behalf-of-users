@@ -50,6 +50,7 @@ The second script `bulkRegistrationCreateAndActivateCredential.py` will be used 
     |challengeTimeoutInMinutes| Required. The number of minutes the Entra ID issued FIDO2 challenge should be valid for. Used to allow for extended processing times between the point where the challenge is requested and the registeration of the credential with EntraID|
     |deleteExistingUserFIDOCredentials| Required. A boolean indicating whether existing FIDO2 keys registered for the user in Entra ID should be deleted before registering new FIDO2 credentials.|
     |useRandomPIN| Required. Set to *false* if using a security key with existing PIN and you prefer to let the platform prompt you for PIN. When using false some platforms will require a PIN to be set first. Script will set random 6 digit PIN if set to `true`.  Warning if setting a random PIN make sure not to lose track of the random PIN or the security key may need to be reset. |    
+    |useCTAP21Features| Required. This feature is intended to best work with YubiKey firmware 5.7+. See https://www.yubico.com/blog/now-available-for-purchase-yubikey-5-series-and-security-key-series-with-new-5-7-firmware/. If this configuration is set to `true`, the script will attempt to set the minimum PIN length to 6 and force a PIN change on first use. *IMPORTANT* If you are using a key with a shorter 4 digit PIN, this configuration will force the YubiKey to use a 6 digit PIN going forward. Once the minimum PIN length setting on the YubiKey is increased it cannot be decreased again without resetting the FIDO2 application and erasing all existing FIDO2 credentials on the YubiKey. These features can only be set when the script is run on Windows 11 as admin or with macOS. Authenticating when security keys have these CTAP2.1 features enabled is best experienced on Windows 11 or macOS(Chrome only).|
 3. `pip install fido2`
 4. `pip install requests`
 5. `pip install yubikey-manager`
@@ -62,20 +63,23 @@ The second script `bulkRegistrationCreateAndActivateCredential.py` will be used 
 5. Any security key that is used with this script must also be supported by Microsoft. See https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-passwordless#fido2-security-key-providers
 
 #### Tested configurations:
-| Platform | PIN configured on key | configs.json setting | Result |
+| Platform | PIN already configured on key | configs.json setting | Result |
 |-----------|-----------|-----------|-----------| 
 | Windows admin-mode | PIN not set| useRandomPIN=false | Not supported configuration |
 | Windows admin-mode | PIN not set| useRandomPIN=true | Script will set a random PIN |
 | Windows admin-mode | PIN set| useRandomPIN=false | Script will prompt for existing PIN |
 | Windows admin-mode | PIN set| useRandomPIN=true | Script will prompt for current PIN and change to new random PIN |
+| Windows admin-mode | n/a | useCTAP21Features=true | Script will prompt for PIN and force PIN change and also set the minimum PIN length |
 | Windows non-admin | PIN not set| useRandomPIN=false | Windows Security message will prompt user to set PIN |
 | Windows non-admin | PIN not set| useRandomPIN=true | useRandomPIN ignored. Windows Security message will prompt user to set PIN  |
 | Windows non-admin | PIN set| useRandomPIN=false | Windows Security message will prompt for existing PIN |
 | Windows non-admin | PIN set| useRandomPIN=true | useRandomPIN ignored. Windows Security message will prompt for existing PIN |
+| Windows non-admin | n/a | useCTAP21Features=true | Not supported configuration. Script will skip attempting to set the CTAP 2.1 features|
 | macOS | PIN not set| useRandomPIN=false | Not supported configuration |
 | macOS | PIN not set| useRandomPIN=true | Script will set a random PIN |
 | macOS | PIN set| useRandomPIN=false | Script will prompt for existing PIN |
 | macOS | PIN set| useRandomPIN=true | Script will prompt for current PIN and change to new random PIN |
+| macOS | n/a | useCTAP21Features=true | Script will prompt for PIN and force PIN change and also set the minimum PIN length |
 
 ## How to run
 1. Open terminal.  Notes about running on Windows.
