@@ -1,4 +1,4 @@
-# entraId-register-passkeys-on-behalf-of-users - Bulk Registration
+# entra-Id-register-passkeys-on-behalf-of-users - Bulk Registration
 - This project will use Microsoft Graph APIs to provision FIDO2 credentials on a FIDO2 security key. 
 - This project is an unsupported proof of concept.
 - This project is a simplistic demonstration of how to use the Microsoft Graph APIs to bulk register FIDO2 security keys with a CTAP client for Entra ID users.
@@ -13,7 +13,7 @@ The second script is run to create the credentials on security keys and then reg
 ![Sequence Diagram](../images/bulkRegistrationScripts.png)
 
 ### Script 1
-The first script `bulkRegistrationGetFIDO2Challenges.py` will be used to:
+The first script `step1GetFIDO2Challenges.py` will be used to:
 1. Get a list of users that are in scope for enrollment of FIDO2 credentials. This is currently controlled by membership in a group name that is set in the `configs.json` file. 
 2. For each of the members of the group, the script will call the Graph API for
   `/users/{userPrincipalName | id}/authentication/fido2Methods/creationOptions`
@@ -21,7 +21,7 @@ The first script `bulkRegistrationGetFIDO2Challenges.py` will be used to:
 3. The script writes the relevant details to a csv file. 
 
 ### Script 2
-The second script `bulkRegistrationCreateAndActivateCredential.py` will be used to:
+The second script `step2CreateAndActivateCredential.py` will be used to:
 1. Process the csv file one by one to:
     1. Use the csv to build the fido2 credential creation parameters to create a credential on a YubiKey.
     2. Get the response from the YubiKey and call the Graph API for:
@@ -84,16 +84,16 @@ The second script `bulkRegistrationCreateAndActivateCredential.py` will be used 
 ## How to run
 1. Open terminal.  Notes about running on Windows.
     1. When running the script without administrative privileges, the WinAPI is used (webauthn.dll). This has different behaviors and capabilities than when running the script in admin mode. 
-       Besides the user interface differences, it should be noted that some extensions like credProtectionPolicies cannot be set using webauthn.dll. Entra ID specifically requests credProtect policy level 1 (aka optional) when creating FIDO2 credentials.  This doesn't get explicitly set when using webauthn.dll. Note that the default behavior for the YubiKey is to use Level 1 if not explicitly set so effectively the results are similar.  Also note that the configs.json `userRandomPIN` will be ignored if enabled and the user will be prompted to set a PIN during registration instead of using a randomly generated one.
+       Besides the user interface differences, it should be noted that some extensions like credProtectionPolicies cannot be set using webauthn.dll. Entra ID specifically requests credProtect policy level 1 (aka optional) when creating FIDO2 credentials.  This doesn't get explicitly set when using webauthn.dll. Note that the default behavior for the YubiKey is to use Level 1 if not explicitly set so effectively the results are similar.  Also note that the configs.json `useRandomPIN` will be ignored if enabled and the user will be prompted to set a PIN during registration instead of using a randomly generated one.
     3. When running the script with administrator privileges, a FIDOClient is instead used and supports additional capabilities.
 
-2. Call `python bulkRegistrationGetFIDO2Challenges.py`
+2. Call `python step1GetFIDO2Challenges.py`
 3. Verify the console output looks successful and completed. 
-4. Verify the `registrationUsers.csv` file contents look completed with a header row + probably 1 or2 rows of data representing distinct users.
+4. Verify the `usersToRegister.csv` file contents look completed with a header row + probably 1 or more rows of data representing distinct users.
    You should see 1 row of data in the csv file for each member in the configured Entra ID security group. 
 5. Be ready to have YubiKey(s) available to create credentials on the YubiKeys. 
-6. Call `python bulkRegistrationCreateAndActivateCredential.py`.
-7. Verify the registeredKeys.csv file is populated with registration information. 
+6. Call `python step2CreateAndActivateCredential.py`.
+7. Verify the `keysRegistered.csv` file is populated with registration information. 
 8. Test that the registered security keys work for some of the core use-cases below.
 
 ## Suggested areas to test

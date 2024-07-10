@@ -32,7 +32,7 @@ import re
 
 import requests
 
-csv_file_name = "./registrationUsers.csv"
+csv_file_name = "./usersToRegister.csv"
 config_file_name = "configs.json"
 
 

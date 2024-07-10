@@ -1,4 +1,4 @@
-# entraId-register-passkeys-on-behalf-of-users
+# entra-Id-register-passkeys-on-behalf-of-users
 - This project will use Microsoft Graph APIs to provision FIDO2 credentials on a FIDO2 security key. 
 - This project is an unsupported proof of concept.
 - This project is a simplistic demonstration of how to use the Microsoft Graph APIs to register a FIDO2 security key with a CTAP client. 
@@ -23,13 +23,6 @@ Microsoft Graph APIs allow for customers to develop solutions that allow for FID
 - A FIDO2 security key like a YubiKey
 
 ![Sequence Diagram](images/SolutionOverview-FIDO2-security-key-Admin-on-behalf-of-registration.png)
-
-## Prerequisites
-- Entra ID free tenant
-- A registered application in Entra ID with delegated or application permissions allowing Graph permissions for: `UserAuthenticationMethod.ReadWrite.All`
-- If using delegated permissions, an administrator with Global Administrator or Authentication Administrator roles. Role may be assigned/constrained as part of an administrative unit.
-- FIDO2 Security keys are enabled as an authentication method for the users
-
 
 ## Scenarios supported
 - Administrator led registration of users' primary and backup FIDO2 security keys.

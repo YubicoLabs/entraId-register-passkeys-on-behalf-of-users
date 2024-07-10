@@ -63,8 +63,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 requests.packages.urllib3.disable_warnings()
 
 
-in_csv_file_name = "./registrationUsers.csv"
-out_csv_file_name = "./registeredKeys.csv"
+in_csv_file_name = "./usersToRegister.csv"
+out_csv_file_name = "./keysRegistered.csv"
 config_file_name = "configs.json"
 pin = ""
 
