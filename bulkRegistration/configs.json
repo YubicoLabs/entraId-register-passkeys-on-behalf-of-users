@@ -6,5 +6,5 @@
     "challengeTimeoutInMinutes": 60,
     "deleteExistingUserFIDOCredentials": false,        
     "useRandomPIN": false,
-    "useCTAP21Features", false
+    "useCTAP21Features": false
 }
