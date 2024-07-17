@@ -110,7 +110,7 @@ def base64url_to_bytearray(b64url_string):
 
 
 def create_credentials_on_security_key(
-    user_id, challenge, user_display_name, user_name
+    user_id, challenge, user_display_name, user_name,rp_id
 ):    
     print("-----")
     print("in create_credentials_on_security_key\n")
@@ -124,10 +124,8 @@ def create_credentials_on_security_key(
         WindowsClient.is_available()
         and not ctypes.windll.shell32.IsUserAnAdmin()
     ):
-        # Use the Windows WebAuthn API if available, and we're not running
-        # as admin since the origin is common across all Entra ID tenants
-        # we will simply hard-code it here.
-        client = WindowsClient("https://login.microsoft.com")
+        # Use the Windows WebAuthn API if available, and we're not running        
+        client = WindowsClient("https://" + rp_id)
 
         # Config file setting for useRandomPIN doesn't apply in this scenario
         global pin
@@ -137,10 +135,10 @@ def create_credentials_on_security_key(
         # Locate a device
         for dev in enumerate_devices():
             # Since the origin is common across all Entra ID tenants
-            # we will simply hard-code it here.
+            # we will simply hard-code it here.            
             client = Fido2Client(
                 dev,
-                "https://login.microsoft.com",
+                "https://" + rp_id,
                 user_interaction=CliInteraction(),
             )            
             if client.info.options.get("rk"):
@@ -153,7 +151,7 @@ def create_credentials_on_security_key(
             sys.exit(1)
 
     pkcco = build_creation_options(
-        challenge, user_id, user_display_name, user_name
+        challenge, user_id, user_display_name, user_name, rp_id
     )
 
     result = client.make_credential(pkcco["publicKey"])
@@ -197,7 +195,7 @@ def set_http_headers(access_token):
     }
 
 
-def build_creation_options(challenge, userId, displayName, name):
+def build_creation_options(challenge, userId, displayName, name, rp_id):
     # Most of the creation options are static and shouldn't change for each
     # user and for each request so this script staticly defines the creation
     # options that are retrieved from Microsoft Graph. Ideally these would
@@ -215,13 +213,13 @@ def build_creation_options(challenge, userId, displayName, name):
     # use credprotect level 1 if not explicitly set, the default value
     # aligns with the what Microsoft Graph expects to be used.
     # If credprotect > 1 is used on a security key, you should expect
-    # Windows 10 desktop login scenarios to fail.
+    # Windows 10 desktop login scenarios to fail.    
     public_key_credential_creation_options = {
         "publicKey": {
             "challenge": base64url_to_bytearray(challenge),
             "timeout": 0,
             "attestation": "direct",
-            "rp": {"id": "login.microsoft.com", "name": "Microsoft"},
+            "rp": {"id": rp_id, "name": "Microsoft"},
             "user": {
                 "id": base64url_to_bytearray(userId),
                 "displayName": displayName,
@@ -249,8 +247,8 @@ def build_creation_options(challenge, userId, displayName, name):
 
 
 def get_access_token_for_microsoft_graph():
-    # Request a token that is scoped to the main.iam.ad.ext.azure.com
-    # private api Use the device code login flow
+    # Request a token for Graph
+    # Use client_credentials grant
     print("-----")
     print("in get_access_token_for_microsoft_graph\n")
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -286,8 +284,6 @@ def get_access_token_for_microsoft_graph():
 
 
 # Call the Microsoft Graph to create a fido2method
-
-
 def create_and_activate_fido_method(
     credential_id,
     client_extensions,
@@ -489,12 +485,14 @@ def main():
                     user_id = row[2]
                     challenge = row[3]
                     challenge_expiry_time = row[4]
+                    rp_id = row[5]
                     print("-------------------------------------------------")
                     print(f"\tprocessing user: {user_name}")
                     print("-------------------------------------------------")
                     print(f"\tuserDisplayName: {user_display_name}")
                     print(f"\tuserId: {user_id}")
                     print(f"\tchallengeExpiryTime: {challenge_expiry_time}")
+                    print(f"\trpID: {rp_id}")
                     print("\n")
                     (
                         att,
@@ -503,7 +501,7 @@ def main():
                         extn,
                         serial,
                     ) = create_credentials_on_security_key(
-                        user_id, challenge, user_display_name, user_name
+                        user_id, challenge, user_display_name, user_name,rp_id
                     )
                     activated, auth_method = create_and_activate_fido_method(
                         credId,

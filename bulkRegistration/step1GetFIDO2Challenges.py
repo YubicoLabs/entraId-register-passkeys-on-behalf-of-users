@@ -239,6 +239,7 @@ def format_csv_header_row():
         "User.ID",
         "Challenge",
         "ChallengeExpiryTime",
+        "RP.ID"
     ]
     return header
 
@@ -287,6 +288,7 @@ def main():
                     webauthnParams["publicKey"]["user"]["id"],
                     webauthnParams["publicKey"]["challenge"],
                     webauthnParams["challengeTimeoutDateTime"],
+                    webauthnParams["publicKey"]["rp"]["id"]
                 ]
                 csvwriter.writerow(row)
     print("\nCompleted retrieval of fido creation requests for users in "
