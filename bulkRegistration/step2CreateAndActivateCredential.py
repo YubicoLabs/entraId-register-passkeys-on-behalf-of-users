@@ -31,26 +31,32 @@ import csv
 import ctypes
 import datetime
 import json
-import re
-import subprocess
-import sys
 from getpass import getpass
 import secrets
 import string
+
 from ykman.device import list_all_devices
 from ykman import scripting as s
 
 
 import requests
 import urllib3
-from fido2.client import Fido2Client, UserInteraction, WindowsClient
-from fido2.ctap2.extensions import CredProtectExtension
+from fido2.client import (
+    Fido2Client,
+    UserInteraction,
+    DefaultClientDataCollector,
+)
+from fido2.client.windows import WindowsClient
+from fido2.ctap2.extensions import CredProtectExtension, HmacSecretExtension
 from fido2.hid import CtapHidDevice
 from fido2.utils import websafe_decode, websafe_encode
 from fido2.ctap2 import Ctap2, Config
 from fido2.ctap import CtapError
 from fido2.ctap2.pin import ClientPin
-
+try:
+    from fido2.pcsc import CtapPcscDevice
+except ImportError:
+    CtapPcscDevice = None
 # Disabling warnings that get produced when certificate stores aren't updated
 # to check certificate validity.
 # Not recommended for production code to disable the warnings.
@@ -77,6 +83,56 @@ try:
 except ImportError:
     CtapPcscDevice = None
 
+# Use the Windows WebAuthn API if available, and we're not running as admin
+try:
+    from fido2.client.windows import WindowsClient
+
+    use_winclient = (
+        WindowsClient.is_available()
+        and not ctypes.windll.shell32.IsUserAnAdmin()
+    )
+except ImportError:
+    use_winclient = False
+
+
+def get_client(predicate=None, **kwargs):
+    """Locate a CTAP device suitable for use.
+
+    If running on Windows as non-admin, the predicate check will be skipped and
+    a webauthn.dll based client will be returned.
+
+    Extra kwargs will be passed to the constructor of Fido2Client.
+
+    The client will be returned, with the CTAP2 Info, if available.
+    """
+    rp_id = kwargs.pop("rp_id", None)
+    client_data_collector = DefaultClientDataCollector("https://" + rp_id)
+
+    if use_winclient:
+        return (
+            WindowsClient(client_data_collector, allow_hmac_secret=True),
+            None,
+        )
+
+    user_interaction = (
+        kwargs.pop("user_interaction", None) or CliInteraction()
+    )
+
+    # Locate a device
+    for dev in enumerate_devices():
+        # Set up a FIDO 2 client using the origin
+        client = Fido2Client(
+            dev,
+            client_data_collector=client_data_collector,
+            user_interaction=user_interaction,
+            extensions=[HmacSecretExtension(allow_hmac_secret=True)],
+        )
+        # Check if it is suitable for use
+        if predicate is None or predicate(client.info):
+            return client, client.info
+    else:
+        raise ValueError("No suitable Authenticator found!")
+
 
 def enumerate_devices():
     for dev in CtapHidDevice.list_devices():
@@ -86,19 +142,21 @@ def enumerate_devices():
             yield dev
 
 
-# Handle user interaction
-class CliInteraction(UserInteraction):    
+# Handle user interaction via CLI prompts
+class CliInteraction(UserInteraction):
+    def __init__(self):
+        self._pin = None
+
     def prompt_up(self):
-        print("\nTouch your security key now...\n")
+        print(f"\nTouch your authenticator device now...\n")
 
-    def request_pin(self, permissions, rp_id):
-        if not configs["useRandomPIN"]:
-            return getpass("Enter PIN: ")            
-        else:
-            return pin
+    def request_pin(self, permissions, rd_id):
+        if not self._pin:
+            self._pin = getpass("Enter PIN: ")
+        return self._pin
 
-    def request_uv(self, permissions, rp_id):
-        print("User Verification required.")
+    def request_uv(self, permissions, rd_id):
+        print(f"User Verification required.")
         return True
 
 
@@ -110,78 +168,59 @@ def base64url_to_bytearray(b64url_string):
 
 
 def create_credentials_on_security_key(
-    user_id, challenge, user_display_name, user_name,rp_id
-):    
-    print("-----")
-    print("in create_credentials_on_security_key\n")
+    user_id, challenge, user_display_name, user_name, rp_id
+):
+    print(f"-----")
+    print(f"in create_credentials_on_security_key\n")
     print(
         "\tPrepare for FIDO2 Registration Ceremony and follow the prompts\n"
-    )    
-    print("\tPress Enter when security key is ready\n")
+    )
+    print(f"\tPress Enter when security key is ready\n")
     serial_number = get_serial_number()
+    #serial_number="123"
 
-    if (
-        WindowsClient.is_available()
-        and not ctypes.windll.shell32.IsUserAnAdmin()
-    ):
-        # Use the Windows WebAuthn API if available, and we're not running        
-        client = WindowsClient("https://" + rp_id)
-
-        # Config file setting for useRandomPIN doesn't apply in this scenario
+    if use_winclient:
         global pin
         pin = "n/a"
     else:
         generate_and_set_pin()
-        # Locate a device
-        for dev in enumerate_devices():
-            # Since the origin is common across all Entra ID tenants
-            # we will simply hard-code it here.            
-            client = Fido2Client(
-                dev,
-                "https://" + rp_id,
-                user_interaction=CliInteraction(),
-            )            
-            if client.info.options.get("rk"):
-                break
-        else:
-            print(
-                "No security key with support for discoverable"
-                " credentials found"
-            )
-            sys.exit(1)
 
+    client, info = get_client(rp_id=rp_id)
     pkcco = build_creation_options(
         challenge, user_id, user_display_name, user_name, rp_id
     )
 
     result = client.make_credential(pkcco["publicKey"])
 
-    print("\tNew FIDO credential created on YubiKey")
+    print(f"\tNew FIDO credential created on YubiKey")
 
-    attestation_obj = result["attestationObject"]
-    attestation = websafe_encode(attestation_obj)
+    attestation_obj = result.response.attestation_object
+    # attestation = websafe_encode(attestation_obj)
+    attestation = attestation_obj
     print(f"Attestation: {attestation}")
 
-    client_data = result["clientData"].b64
+    client_data = result.response.client_data.b64
     # print(f"\nclientData: {client_data}")
 
     credential_id = websafe_encode(
-        result.attestation_object.auth_data.credential_data.credential_id
+        attestation_obj.auth_data.credential_data.credential_id
     )
     print(f"\ncredentialId: {credential_id}")
 
-    client_extenstion_results = websafe_encode(
-        json.dumps(result.attestation_object.auth_data.extensions).encode(
-            "utf-8"
+    if attestation_obj.auth_data.extensions:
+
+        client_extension_results = websafe_encode(
+            json.dumps(attestation_obj.auth_data.extensions).encode("utf-8")
         )
-    )
-    print(f"\nclientExtensions: {websafe_decode(client_extenstion_results)}")
+    else:
+        client_extension_results = ""
+    print(f"\nclientExtensions: {websafe_decode(client_extension_results)}")
 
     return (
         attestation,
         client_data,
         credential_id,
-        client_extenstion_results,
+        client_extension_results,
         serial_number,
     )
 
@@ -213,7 +252,7 @@ def build_creation_options(challenge, userId, displayName, name, rp_id):
     # use credprotect level 1 if not explicitly set, the default value
     # aligns with the what Microsoft Graph expects to be used.
     # If credprotect > 1 is used on a security key, you should expect
-    # Windows 10 desktop login scenarios to fail.    
+    # Windows 10 desktop login scenarios to fail.
     public_key_credential_creation_options = {
         "publicKey": {
             "challenge": base64url_to_bytearray(challenge),
@@ -229,6 +268,7 @@ def build_creation_options(challenge, userId, displayName, name, rp_id):
                 {"type": "public-key", "alg": -7},
                 {"type": "public-key", "alg": -257},
             ],
+            "hints": ["security-key"],
             "excludeCredentials": [],
             "authenticatorSelection": {
                 "authenticatorAttachment": "cross-platform",
@@ -249,8 +289,8 @@ def build_creation_options(challenge, userId, displayName, name, rp_id):
 def get_access_token_for_microsoft_graph():
     # Request a token for Graph
     # Use client_credentials grant
-    print("-----")
-    print("in get_access_token_for_microsoft_graph\n")
+    print(f"-----")
+    print(f"in get_access_token_for_microsoft_graph\n")
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     token_endpoint = (
         "https://login.microsoftonline.com/"
@@ -268,19 +308,20 @@ def get_access_token_for_microsoft_graph():
     token_response = requests.post(
         token_endpoint, data=body, headers=headers, verify=False
     )
+    decoded_response = token_response.json()
+    if "access_token" in decoded_response:
+        access_token = decoded_response["access_token"]
+    else:
+        # If the response was successful but missing the token, handle it.
+        decoded_response = json.loads(token_response.content)
+        if "error" in decoded_response.keys():
+            raise Exception(
+                decoded_response["error"],
+                decoded_response["error_description"],
+            )
 
-    access_token = re.search(
-        '"access_token":"([^"]+)"', str(token_response.content)
-    )
-
-    decoded_response = json.loads(token_response.content)
-    if "error" in decoded_response.keys():
-        raise Exception(
-            decoded_response["error"], decoded_response["error_description"]
-        )
-
-    print("\t retrieved access token using app credentials")
-    return access_token.group(1)
+    print(f"\t retrieved access token using app credentials")
+    return access_token
 
 
 # Call the Microsoft Graph to create a fido2method
@@ -293,8 +334,8 @@ def create_and_activate_fido_method(
     serial_number,
     access_token,
 ):
-    print("-----")
-    print("in create_and_activate_fido_method\n")
+    print(f"-----")
+    print(f"in create_and_activate_fido_method\n")
 
     headers = set_http_headers(access_token)
 
@@ -304,16 +345,21 @@ def create_and_activate_fido_method(
         + "/authentication/fido2Methods"
     )
 
+    if client_extensions:
+        clientExtensionResults = json.loads(
+            websafe_decode(client_extensions).decode("utf-8")
+        )
+    else:
+        clientExtensionResults = None
+
     body = {
         "publicKeyCredential": {
             "id": credential_id,
             "response": {
-                "attestationObject": attestation,
+                "attestationObject": websafe_encode(attestation),
                 "clientDataJSON": client_data,
             },
-            "clientExtensionResults": json.loads(
-                base64.b64decode(str(client_extensions)).decode("utf-8")
-            ),
+            "clientExtensionResults": clientExtensionResults,
         },
         "displayName": "Serial: "
         + str(serial_number)
@@ -327,7 +373,7 @@ def create_and_activate_fido_method(
 
     if response.status_code == 201:
         create_response = response.json()
-        print("\tRegistration success.")
+        print(f"\tRegistration success.")
         print(f'\tAuth method objectId: {create_response["id"]}')
         return True, create_response["id"]
     else:
@@ -357,8 +403,8 @@ def generate_pin():
 
 
 def generate_and_set_pin():
-    print("-----")
-    print("in generate_and_set_pin\n")
+    print(f"-----")
+    print(f"in generate_and_set_pin\n")
     global pin
     if configs["useRandomPIN"]:
         # devices = list(CtapHidDevice.list_devices())
@@ -366,7 +412,7 @@ def generate_and_set_pin():
         with device.fido() as connection:
             ctap = Ctap2(connection)
             if ctap.info.options.get("clientPin"):
-                print("\tPIN already set for the device. Quitting.")
+                print(f"\tPIN already set for the device. Quitting.")
                 print(
                     "\tReset YubiKey and rerun the script if you want to use the config 'useRandomPIN'"
                 )
@@ -377,20 +423,19 @@ def generate_and_set_pin():
             client_pin.set_pin(pin)
             print(f"\tPIN set to {pin}")
     else:
-        print("\tNot generating PIN. Allowing platform to prompt for PIN\n")
+        print(f"\tNot generating PIN. Allowing platform to prompt for PIN\n")
 
 
 def set_ctap21_flags():
-    global pin    
-    #No need to try if using the Windows client (as non-admin)
-    if not (
-        WindowsClient.is_available()
-        and not ctypes.windll.shell32.IsUserAnAdmin()
-    ):
+    global pin
+    # No need to try if using the Windows client (as non-admin)
+    if not use_winclient:
         device = s.single()
-        if not configs['useRandomPIN']:
-            #Need to prompt for PIN again if using user supplied PIN
-            print("PIN required to set minimum length and force pin change flags")
+        if not configs["useRandomPIN"]:
+            # Need to prompt for PIN again if using user supplied PIN
+            print(
+                f"PIN required to set minimum length and force pin change flags"
+            )
             pin = getpass("Please enter the PIN:")
 
         with device.fido() as connection:
@@ -401,9 +446,9 @@ def set_ctap21_flags():
                     pin, ClientPin.PERMISSION.AUTHENTICATOR_CFG
                 )
                 config = Config(ctap, client_pin.protocol, token)
-                print("\tGoing to set the minimum pin length to 6.")
+                print(f"\tGoing to set the minimum pin length to 6.")
                 config.set_min_pin_length(min_pin_length=6)
-                print("\tGoing to force a PIN change on first use.")
+                print(f"\tGoing to force a PIN change on first use.")
                 config.set_min_pin_length(force_change_pin=True)
     else:
         print(
@@ -478,7 +523,7 @@ def main():
             for row in csv_reader:
                 if line_count == 0:
                     # Assume header exists in the csv and skip this row
-                    print("\tSkip csv header row")
+                    print(f"\tSkip csv header row")
                 else:
                     user_name = row[0]
                     user_display_name = row[1]
@@ -486,14 +531,18 @@ def main():
                     challenge = row[3]
                     challenge_expiry_time = row[4]
                     rp_id = row[5]
-                    print("-------------------------------------------------")
+                    print(
+                        f"-------------------------------------------------"
+                    )
                     print(f"\tprocessing user: {user_name}")
-                    print("-------------------------------------------------")
+                    print(
+                        f"-------------------------------------------------"
+                    )
                     print(f"\tuserDisplayName: {user_display_name}")
                     print(f"\tuserId: {user_id}")
                     print(f"\tchallengeExpiryTime: {challenge_expiry_time}")
                     print(f"\trpID: {rp_id}")
-                    print("\n")
+                    print(f"\n")
                     (
                         att,
                         clientData,
@@ -501,7 +550,11 @@ def main():
                         extn,
                         serial,
                     ) = create_credentials_on_security_key(
-                        user_id, challenge, user_display_name, user_name,rp_id
+                        user_id,
+                        challenge,
+                        user_display_name,
+                        user_name,
+                        rp_id,
                     )
                     activated, auth_method = create_and_activate_fido_method(
                         credId,
@@ -524,7 +577,7 @@ def main():
                     # username,authMethodID,serialNumber,PIN
                     csv_writer.writerow([user_name, auth_method, serial, pin])
                     input("\tPress Enter key to continue...")
-                    print("-----")
+                    print(f"-----")
 
                 line_count += 1
     print(
