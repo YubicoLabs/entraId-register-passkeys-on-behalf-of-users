@@ -125,7 +125,8 @@ def get_client(predicate=None, **kwargs):
             dev,
             client_data_collector=client_data_collector,
             user_interaction=user_interaction,
-            extensions=[HmacSecretExtension(allow_hmac_secret=True)],
+            extensions=[HmacSecretExtension(allow_hmac_secret=True), CredProtectExtension()],
+            
         )
         # Check if it is suitable for use
         if predicate is None or predicate(client.info):
@@ -197,7 +198,7 @@ def create_credentials_on_security_key(
     attestation_obj = result.response.attestation_object
     # attestation = websafe_encode(attestation_obj)
     attestation = attestation_obj
-    print(f"Attestation: {attestation}")
+    print(f"Attestation: {websafe_encode(attestation)}")
 
     client_data = result.response.client_data.b64
     # print(f"\nclientData: {client_data}")
@@ -278,7 +279,7 @@ def build_creation_options(challenge, userId, displayName, name, rp_id):
             "extensions": {
                 "hmacCreateSecret": True,
                 "enforceCredentialProtectionPolicy": True,
-                "credentialProtectionPolicy": CredProtectExtension.POLICY.OPTIONAL,
+                "credentialProtectionPolicy": CredProtectExtension.POLICY.OPTIONAL
             },
         }
     }
