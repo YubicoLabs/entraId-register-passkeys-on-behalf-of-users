@@ -254,6 +254,10 @@ def build_creation_options(challenge, userId, displayName, name, rp_id):
     # aligns with the what Microsoft Graph expects to be used.
     # If credprotect > 1 is used on a security key, you should expect
     # Windows 10 desktop login scenarios to fail.
+    
+    cred_protect = "optional" if use_winclient else "userVerificationOptional"
+    
+    
     public_key_credential_creation_options = {
         "publicKey": {
             "challenge": base64url_to_bytearray(challenge),
@@ -279,7 +283,7 @@ def build_creation_options(challenge, userId, displayName, name, rp_id):
             "extensions": {
                 "hmacCreateSecret": True,
                 "enforceCredentialProtectionPolicy": True,
-                "credentialProtectionPolicy": CredProtectExtension.POLICY.OPTIONAL
+                "credentialProtectionPolicy": cred_protect
             },
         }
     }
