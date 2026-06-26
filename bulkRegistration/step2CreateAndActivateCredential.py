@@ -255,9 +255,7 @@ def build_creation_options(challenge, userId, displayName, name, rp_id):
     # If credprotect > 1 is used on a security key, you should expect
     # Windows 10 desktop login scenarios to fail.
     
-    cred_protect = "optional" if use_winclient else "userVerificationOptional"
-    
-    
+       
     public_key_credential_creation_options = {
         "publicKey": {
             "challenge": base64url_to_bytearray(challenge),
@@ -283,7 +281,7 @@ def build_creation_options(challenge, userId, displayName, name, rp_id):
             "extensions": {
                 "hmacCreateSecret": True,
                 "enforceCredentialProtectionPolicy": True,
-                "credentialProtectionPolicy": cred_protect
+                "credentialProtectionPolicy": "userVerificationOptional"
             },
         }
     }
@@ -337,7 +335,7 @@ def create_and_activate_fido_method(
     attestation,
     client_data,
     serial_number,
-    access_token,
+    access_token    
 ):
     print(f"-----")
     print(f"in create_and_activate_fido_method\n")
@@ -349,7 +347,7 @@ def create_and_activate_fido_method(
         + user_name
         + "/authentication/fido2Methods"
     )
-
+    print(fido_credentials_endpoint)
     if client_extensions:
         clientExtensionResults = json.loads(
             websafe_decode(client_extensions).decode("utf-8")
@@ -371,7 +369,7 @@ def create_and_activate_fido_method(
         + " "
         + str(datetime.date.today()),
     }
-
+    print(body)
     response = requests.post(
         fido_credentials_endpoint, json=body, headers=headers, verify=False
     )
@@ -568,7 +566,7 @@ def main():
                         att,
                         clientData,
                         serial,
-                        access_token,
+                        access_token                        
                     )
 
                     # Set min pin length and force pin change flags
